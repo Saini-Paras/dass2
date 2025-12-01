@@ -17,7 +17,11 @@ import {
   CheckCircle,
   AlertCircle,
   FileText,
-  Loader2
+  Loader2,
+  Link,
+  Copy,
+  ExternalLink,
+  Globe
 } from 'lucide-react';
 
 // --- Utility: Script Loader & File Saver ---
@@ -442,13 +446,13 @@ const JsonCreatorTool = () => {
   );
 };
 
-// --- Tool 3: Importer UI (Updated with Backend Connection) ---
+// --- Tool 3: Importer UI ---
 
 const ImporterTool = () => {
   const [file, setFile] = useState(null);
   const [shopUrl, setShopUrl] = useState("");
   const [token, setToken] = useState("");
-  const [status, setStatus] = useState("idle"); // idle, processing, success, error
+  const [status, setStatus] = useState("idle"); 
   const [resultMsg, setResultMsg] = useState("");
 
   const handleImport = async () => {
@@ -461,7 +465,6 @@ const ImporterTool = () => {
     setResultMsg("Reading file...");
 
     try {
-      // 1. Read JSON File
       const fileContent = await new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = (e) => resolve(e.target.result);
@@ -477,8 +480,6 @@ const ImporterTool = () => {
 
       setResultMsg(`Sending ${collections.length} collections to backend...`);
 
-      // 2. Send to Backend API
-      // Note: This URL assumes you are hosting on Vercel with an /api folder
       const response = await fetch('/api/import_collections', {
         method: 'POST',
         headers: {
@@ -497,7 +498,6 @@ const ImporterTool = () => {
         throw new Error(data.error || "Server error occurred");
       }
 
-      // 3. Handle Success
       setStatus("success");
       setResultMsg(
         `Import Complete! Success: ${data.results.success}, Failed: ${data.results.failed}`
@@ -548,7 +548,6 @@ const ImporterTool = () => {
           onFileSelect={(e) => setFile(e.target.files[0])}
         />
         
-        {/* Status Message Display */}
         {status !== 'idle' && (
           <div className={`mt-4 p-3 rounded-md text-sm font-mono flex items-center gap-2
             ${status === 'processing' ? 'bg-blue-900/20 text-blue-400' : ''}
@@ -571,6 +570,116 @@ const ImporterTool = () => {
            </Button>
         </div>
       </Card>
+    </div>
+  );
+};
+
+
+// --- Tool 4: Collection Extractor ---
+
+const CollectionExtractorTool = () => {
+  const [url, setUrl] = useState('');
+  const [collections, setCollections] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  const handleExtract = async () => {
+    if (!url) return;
+    setLoading(true);
+    setError(null);
+    setCollections([]);
+
+    try {
+      const response = await fetch('/api/extract_collections', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url })
+      });
+
+      const data = await response.json();
+      
+      if (!response.ok) throw new Error(data.error || 'Failed to extract collections');
+      
+      if (data.collections && data.collections.length > 0) {
+        setCollections(data.collections);
+      } else {
+        throw new Error('No collections found or store is password protected.');
+      }
+
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const copyToClipboard = (text) => {
+    navigator.clipboard.writeText(text);
+  };
+
+  return (
+    <div className="max-w-4xl mx-auto space-y-6">
+      <Card>
+        <h3 className="text-lg font-medium text-white mb-4 flex items-center gap-2">
+          <Globe size={18} className="text-neutral-400" />
+          Target Store
+        </h3>
+        <div className="flex gap-4">
+          <div className="flex-1">
+            <Input 
+              value={url} 
+              onChange={(e) => setUrl(e.target.value)} 
+              placeholder="https://cakesbody.com" 
+            />
+          </div>
+          <Button onClick={handleExtract} disabled={loading || !url}>
+            {loading ? <Loader2 className="animate-spin" size={16} /> : 'Extract Collections'}
+          </Button>
+        </div>
+        {error && (
+          <div className="mt-4 p-3 bg-red-900/20 text-red-400 rounded-md text-sm flex items-center gap-2">
+            <AlertCircle size={16} />
+            {error}
+          </div>
+        )}
+      </Card>
+
+      {collections.length > 0 && (
+        <Card>
+          <div className="flex items-center justify-between mb-4 border-b border-neutral-800 pb-4">
+             <h3 className="text-lg font-medium text-white">Found {collections.length} Collections</h3>
+             <Button variant="ghost" onClick={() => setCollections([])}>Clear</Button>
+          </div>
+          <div className="space-y-2">
+            {collections.map((col, idx) => (
+              <div key={idx} className="flex items-center justify-between p-3 bg-[#0a0a0a] border border-neutral-800 rounded-md hover:border-neutral-700 transition-colors group">
+                <div className="min-w-0 flex-1">
+                  <div className="font-medium text-white truncate">{col.title}</div>
+                  <div className="text-xs text-neutral-500 truncate font-mono mt-0.5">{col.url}</div>
+                </div>
+                <div className="flex gap-2 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
+                  <button 
+                    onClick={() => copyToClipboard(col.url)}
+                    className="p-2 text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-md transition-colors"
+                    title="Copy Link"
+                  >
+                    <Copy size={16} />
+                  </button>
+                  <a 
+                    href={col.url} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="p-2 text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-md transition-colors"
+                    title="Open in New Tab"
+                  >
+                    <ExternalLink size={16} />
+                  </a>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
     </div>
   );
 };
@@ -601,6 +710,7 @@ const App = () => {
     { id: "tag-automation", label: "Tag Automation", icon: <Database size={18} /> },
     { id: "json-creator", label: "JSON Creator", icon: <FileJson size={18} /> },
     { id: "importer", label: "Collection Importer", icon: <Upload size={18} /> },
+    { id: "extractor", label: "Collection Extractor", icon: <Link size={18} /> },
   ];
 
   return (
@@ -702,6 +812,7 @@ const App = () => {
               {activeTab === 'tag-automation' && <TagAutomationTool libsLoaded={libsLoaded} />}
               {activeTab === 'json-creator' && <JsonCreatorTool />}
               {activeTab === 'importer' && <ImporterTool />}
+              {activeTab === 'extractor' && <CollectionExtractorTool />}
             </div>
 
           </div>
