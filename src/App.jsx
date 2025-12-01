@@ -88,6 +88,19 @@ const Input = ({ label, value, onChange, placeholder, type = "text" }) => (
   </div>
 );
 
+const TextArea = ({ label, value, onChange, placeholder, rows = 3 }) => (
+  <div className="flex flex-col gap-1.5">
+    {label && <label className="text-xs font-medium text-neutral-400 uppercase tracking-wider">{label}</label>}
+    <textarea
+      value={value}
+      onChange={onChange}
+      placeholder={placeholder}
+      rows={rows}
+      className="bg-[#0a0a0a] border border-neutral-800 text-neutral-200 rounded-md px-3 py-2.5 text-sm focus:outline-none focus:border-neutral-600 transition-colors placeholder:text-neutral-600 resize-y font-mono"
+    />
+  </div>
+);
+
 const FileUpload = ({ label, accept, onFileSelect, file }) => (
   <div className="flex flex-col gap-2">
     <label className="text-xs font-medium text-neutral-400 uppercase tracking-wider">{label}</label>
@@ -118,7 +131,7 @@ const FileUpload = ({ label, accept, onFileSelect, file }) => (
   </div>
 );
 
-// --- Tool 1: Tag Automation Logic ---
+// --- Tool 1: Tag Automation Logic (FIXED) ---
 
 const TagAutomationTool = ({ libsLoaded }) => {
   const [masterFile, setMasterFile] = useState(null);
@@ -143,7 +156,7 @@ const TagAutomationTool = ({ libsLoaded }) => {
     setLogs(["> Starting automation process..."]);
 
     try {
-      // 1. Parse Master CSV
+      // 1. Parse Master CSV (Load as Array to preserve ALL rows)
       addLog("Parsing Master CSV...");
       const masterData = await new Promise((resolve) => {
         window.Papa.parse(masterFile, {
@@ -152,50 +165,82 @@ const TagAutomationTool = ({ libsLoaded }) => {
           skipEmptyLines: true
         });
       });
+      addLog(`Loaded ${masterData.length} rows from Master CSV.`);
 
-      // Create a map for faster lookup: Handle -> Row Object
-      const productMap = new Map();
-      masterData.forEach(row => {
-        if (row.Handle) productMap.set(row.Handle, row);
-      });
-      addLog(`Loaded ${productMap.size} products from Master.`);
-
-      // 2. Process Zip
-      addLog("Opening ZIP file...");
+      // 2. Process Zip to build a "Cheat Sheet" (Handle -> Set of Tags to Add)
+      addLog("Scanning Collections ZIP...");
       const zip = new window.JSZip();
       const loadedZip = await zip.loadAsync(zipFile);
       
+      const tagsToAddMap = new Map(); // Key: Handle, Value: Set(Tags)
+
       let collectionsProcessed = 0;
 
       for (const [filename, file] of Object.entries(loadedZip.files)) {
         if (!filename.endsWith('.csv') || filename.startsWith('__MACOSX')) continue;
 
         const tagName = `${prefix}${filename.replace('.csv', '')}`;
-        addLog(`Processing collection: ${filename} -> Tag: ${tagName}`);
+        addLog(`Found collection: ${filename} -> Tag: ${tagName}`);
 
         const content = await file.async("string");
         const collectionData = window.Papa.parse(content, { header: true }).data;
 
         collectionData.forEach(row => {
-          const handle = row.Handle || row.handle; // Handle case sensitivity
-          if (handle && productMap.has(handle)) {
-            const product = productMap.get(handle);
-            const currentTags = product.Tags ? product.Tags.split(',').map(t => t.trim()) : [];
-            
-            if (!currentTags.includes(tagName)) {
-              currentTags.push(tagName);
-              product.Tags = currentTags.join(', ');
-            }
+          const handle = row.Handle || row.handle; 
+          if (handle) {
+             if (!tagsToAddMap.has(handle)) {
+               tagsToAddMap.set(handle, new Set());
+             }
+             tagsToAddMap.get(handle).add(tagName);
           }
         });
         collectionsProcessed++;
       }
+      addLog(`Mapped tags for ${tagsToAddMap.size} unique handles.`);
 
-      addLog(`Processed ${collectionsProcessed} collections.`);
+      // 3. Update Master Data (Iterate Array to preserve rows)
+      addLog("Applying tags to Master Data...");
+      let updatedCount = 0;
+
+      masterData.forEach(row => {
+        const handle = row.Handle;
+        
+        // Only proceed if we have tags to add for this handle
+        if (handle && tagsToAddMap.has(handle)) {
+          const newTagsSet = tagsToAddMap.get(handle);
+
+          // Python Logic Mirror: Check if row has Title OR has Tags
+          // This ensures we update the main product row or rows that already have tags
+          const hasTitle = row.Title && row.Title.toString().trim() !== '';
+          const hasTags = row.Tags && row.Tags.toString().trim() !== '';
+
+          if (hasTitle || hasTags) {
+             const currentTagsStr = row.Tags ? row.Tags.toString() : "";
+             let currentTagsList = currentTagsStr.split(',').map(t => t.trim()).filter(t => t !== "");
+             const currentTagsSet = new Set(currentTagsList);
+
+             let tagsAdded = false;
+             newTagsSet.forEach(newTag => {
+               if (!currentTagsSet.has(newTag)) {
+                 currentTagsList.push(newTag);
+                 currentTagsSet.add(newTag);
+                 tagsAdded = true;
+               }
+             });
+
+             if (tagsAdded) {
+               row.Tags = currentTagsList.join(', ');
+               updatedCount++;
+             }
+          }
+        }
+      });
+
+      addLog(`Finished processing. Updated tags in ${updatedCount} rows.`);
       
-      // 3. Export
+      // 4. Export
       addLog("Generating final CSV...");
-      const csv = window.Papa.unparse(Array.from(productMap.values()));
+      const csv = window.Papa.unparse(masterData);
       const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
       saveAs(blob, "Master_Updated_With_Tags.csv");
       addLog("Download started. Process complete!");
@@ -266,26 +311,28 @@ const TagAutomationTool = ({ libsLoaded }) => {
   );
 };
 
-// --- Tool 2: JSON Creator Logic ---
+// --- Tool 2: JSON Creator Logic (Updated with body_html) ---
 
 const JsonCreatorTool = () => {
   const [collections, setCollections] = useState([]);
   const [formData, setFormData] = useState({
     handle: "",
     title: "",
+    body_html: "",
     sort_order: "best-selling",
     condition_tag: ""
   });
 
   const handleAdd = () => {
     if (!formData.handle || !formData.title || !formData.condition_tag) {
-      alert("Please fill in all fields.");
+      alert("Please fill in required fields (Handle, Title, Condition Tag).");
       return;
     }
 
     const newCollection = {
       handle: formData.handle,
       title: formData.title,
+      body_html: formData.body_html,
       sort_order: formData.sort_order,
       rules: [
         {
@@ -297,7 +344,7 @@ const JsonCreatorTool = () => {
     };
 
     setCollections([...collections, newCollection]);
-    setFormData({ ...formData, handle: "", title: "", condition_tag: "" }); // Reset text fields
+    setFormData({ ...formData, handle: "", title: "", body_html: "", condition_tag: "" }); // Reset text fields
   };
 
   const downloadJson = () => {
@@ -322,6 +369,13 @@ const JsonCreatorTool = () => {
               value={formData.handle}
               onChange={(e) => setFormData({...formData, handle: e.target.value})}
               placeholder="e.g. summer-sale"
+            />
+            <TextArea 
+              label="Description (HTML supported)" 
+              value={formData.body_html}
+              onChange={(e) => setFormData({...formData, body_html: e.target.value})}
+              placeholder="<p>Our best summer collection...</p>"
+              rows={4}
             />
             <div className="flex flex-col gap-1.5">
               <label className="text-xs font-medium text-neutral-400 uppercase tracking-wider">Sort Order</label>
