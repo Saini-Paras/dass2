@@ -23,7 +23,8 @@ import {
   ExternalLink,
   Globe,
   FileCode,
-  Type
+  Type,
+  Hash
 } from 'lucide-react';
 
 // --- Utility: Script Loader & File Saver ---
@@ -54,6 +55,30 @@ const saveAs = (blob, filename) => {
 };
 
 // --- Components ---
+
+const Toast = ({ message, type, onClose }) => {
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      onClose();
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [onClose]);
+
+  const bgColors = {
+    success: 'bg-green-900/90 border-green-800 text-green-100',
+    error: 'bg-red-900/90 border-red-800 text-red-100',
+    info: 'bg-neutral-800/90 border-neutral-700 text-white'
+  };
+
+  return (
+    <div className={`fixed bottom-6 right-6 z-50 px-4 py-3 rounded-md border shadow-lg backdrop-blur-sm flex items-center gap-3 animate-in slide-in-from-bottom-5 fade-in duration-300 ${bgColors[type] || bgColors.info}`}>
+      {type === 'success' && <CheckCircle size={18} />}
+      {type === 'error' && <AlertCircle size={18} />}
+      {type === 'info' && <Terminal size={18} />}
+      <span className="text-sm font-medium">{message}</span>
+    </div>
+  );
+};
 
 const Card = ({ children, className = "" }) => (
   <div className={`bg-[#141414] border border-neutral-800 rounded-lg p-6 ${className}`}>
@@ -147,7 +172,7 @@ const FileUpload = ({ label, accept, onFileSelect, file }) => (
 
 // --- Tool 1: Tag Automation Logic (FIXED) ---
 
-const TagAutomationTool = ({ libsLoaded }) => {
+const TagAutomationTool = ({ libsLoaded, notify }) => {
   const [masterFile, setMasterFile] = useState(null);
   const [zipFile, setZipFile] = useState(null);
   const [prefix, setPrefix] = useState("cus-");
@@ -158,15 +183,16 @@ const TagAutomationTool = ({ libsLoaded }) => {
 
   const processFiles = async () => {
     if (!libsLoaded) {
-      alert("Libraries are still loading... please wait a moment.");
+      notify("Libraries are still loading...", "error");
       return;
     }
     if (!masterFile || !zipFile) {
-      alert("Please upload both the Master CSV and the Collections ZIP.");
+      notify("Please upload both CSV and ZIP files", "error");
       return;
     }
 
     setIsProcessing(true);
+    notify("Starting automation process...", "info");
     setLogs(["> Starting automation process..."]);
 
     try {
@@ -219,12 +245,9 @@ const TagAutomationTool = ({ libsLoaded }) => {
       masterData.forEach(row => {
         const handle = row.Handle;
         
-        // Only proceed if we have tags to add for this handle
         if (handle && tagsToAddMap.has(handle)) {
           const newTagsSet = tagsToAddMap.get(handle);
 
-          // Python Logic Mirror: Check if row has Title OR has Tags
-          // This ensures we update the main product row or rows that already have tags
           const hasTitle = row.Title && row.Title.toString().trim() !== '';
           const hasTags = row.Tags && row.Tags.toString().trim() !== '';
 
@@ -257,10 +280,12 @@ const TagAutomationTool = ({ libsLoaded }) => {
       const csv = window.Papa.unparse(masterData);
       const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
       saveAs(blob, "Master_Updated_With_Tags.csv");
+      notify("Processing complete! Download started.", "success");
       addLog("Download started. Process complete!");
 
     } catch (error) {
       console.error(error);
+      notify(`Error: ${error.message}`, "error");
       addLog(`ERROR: ${error.message}`);
     } finally {
       setIsProcessing(false);
@@ -327,7 +352,7 @@ const TagAutomationTool = ({ libsLoaded }) => {
 
 // --- Tool 2: JSON Creator Logic (Updated with body_html) ---
 
-const JsonCreatorTool = () => {
+const JsonCreatorTool = ({ notify }) => {
   const [collections, setCollections] = useState([]);
   const [formData, setFormData] = useState({
     handle: "",
@@ -339,7 +364,7 @@ const JsonCreatorTool = () => {
 
   const handleAdd = () => {
     if (!formData.handle || !formData.title || !formData.condition_tag) {
-      alert("Please fill in required fields (Handle, Title, Condition Tag).");
+      notify("Please fill in Handle, Title, and Condition Tag", "error");
       return;
     }
 
@@ -358,12 +383,14 @@ const JsonCreatorTool = () => {
     };
 
     setCollections([...collections, newCollection]);
-    setFormData({ ...formData, handle: "", title: "", body_html: "", condition_tag: "" }); // Reset text fields
+    setFormData({ ...formData, handle: "", title: "", body_html: "", condition_tag: "" }); 
+    notify("Collection added to list", "success");
   };
 
   const downloadJson = () => {
     const blob = new Blob([JSON.stringify(collections, null, 2)], { type: "application/json" });
     saveAs(blob, "smart_collections.json");
+    notify("JSON file downloaded", "success");
   };
 
   return (
@@ -458,7 +485,7 @@ const JsonCreatorTool = () => {
 
 // --- Tool 3: Importer UI ---
 
-const ImporterTool = () => {
+const ImporterTool = ({ notify }) => {
   const [file, setFile] = useState(null);
   const [shopUrl, setShopUrl] = useState("");
   const [token, setToken] = useState("");
@@ -467,12 +494,13 @@ const ImporterTool = () => {
 
   const handleImport = async () => {
     if (!file || !shopUrl || !token) {
-      alert("Please fill in all fields and upload a JSON file.");
+      notify("Please fill all fields", "error");
       return;
     }
 
     setStatus("processing");
     setResultMsg("Reading file...");
+    notify("Starting import process...", "info");
 
     try {
       const fileContent = await new Promise((resolve, reject) => {
@@ -512,11 +540,13 @@ const ImporterTool = () => {
       setResultMsg(
         `Import Complete! Success: ${data.results.success}, Failed: ${data.results.failed}`
       );
+      notify("Import process completed successfully!", "success");
 
     } catch (err) {
       console.error(err);
       setStatus("error");
       setResultMsg(`Error: ${err.message}`);
+      notify("Import failed. Check logs.", "error");
     }
   };
 
@@ -587,7 +617,7 @@ const ImporterTool = () => {
 
 // --- Tool 4: Collection Extractor (Updated) ---
 
-const CollectionExtractorTool = () => {
+const CollectionExtractorTool = ({ notify }) => {
   const [url, setUrl] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -612,6 +642,7 @@ const CollectionExtractorTool = () => {
     if (!url) return;
     setLoading(true);
     setError(null);
+    notify("Fetching collections...", "info");
 
     try {
       const response = await fetch('/api/extract_collections', {
@@ -626,19 +657,22 @@ const CollectionExtractorTool = () => {
       
       if (data.collections && data.collections.length > 0) {
         setCollections(data.collections);
+        notify(`Success! Found ${data.collections.length} collections.`, "success");
       } else {
         throw new Error('No collections found or store is password protected.');
       }
 
     } catch (err) {
       setError(err.message);
+      notify(`Error: ${err.message}`, "error");
     } finally {
       setLoading(false);
     }
   };
 
-  const copyToClipboard = (text) => {
+  const copyToClipboard = (text, label) => {
     navigator.clipboard.writeText(text);
+    notify(`${label} copied to clipboard!`, "success");
   };
 
   // 3. Search Filter Logic
@@ -694,32 +728,40 @@ const CollectionExtractorTool = () => {
                   setCollections([]);
                   setSearchTerm('');
                   localStorage.removeItem('extracted_collections');
+                  notify("Cleared all data", "info");
                 }}>Clear</Button>
              </div>
           </div>
 
           <div className="space-y-3">
             {filteredCollections.map((col, idx) => (
-              <div key={idx} className="bg-[#0a0a0a] border border-neutral-800 rounded-md overflow-hidden group hover:border-neutral-700 transition-colors">
+              <div 
+                key={idx} 
+                onClick={() => window.open(col.url, '_blank')}
+                className="bg-[#0a0a0a] border border-neutral-800 rounded-md overflow-hidden group hover:border-neutral-600 transition-colors cursor-pointer"
+              >
                 <div className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
                   <div className="min-w-0 flex-1">
                     <div className="font-medium text-white flex items-center gap-2">
                         {col.title}
-                        <a href={col.url} target="_blank" rel="noopener noreferrer" className="text-neutral-500 hover:text-white transition-colors">
-                            <ExternalLink size={12} />
-                        </a>
+                        <ExternalLink size={12} className="text-neutral-600" />
                     </div>
                     <div className="text-xs text-neutral-500 truncate font-mono mt-0.5">{col.url}</div>
                   </div>
                   
-                  <div className="flex gap-2 shrink-0">
-                    <Button variant="secondary" onClick={() => copyToClipboard(col.title)} className="h-8 px-3 text-xs" title="Copy Title">
+                  <div className="flex gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
+                    <Button variant="secondary" onClick={() => copyToClipboard(col.title, 'Title')} className="h-8 px-3 text-xs" title="Copy Title">
                         <Type size={14} className="mr-1.5"/> Title
                     </Button>
-                    <Button variant="secondary" onClick={() => copyToClipboard(col.url)} className="h-8 px-3 text-xs" title="Copy URL">
-                        <Link size={14} className="mr-1.5"/> Link
+                    <Button 
+                      variant="secondary" 
+                      onClick={() => copyToClipboard(`/collections/${col.handle}`, 'Handle path')} 
+                      className="h-8 px-3 text-xs" 
+                      title="Copy Handle Path"
+                    >
+                        <Hash size={14} className="mr-1.5"/> Handle
                     </Button>
-                    <Button variant="secondary" onClick={() => copyToClipboard(col.description)} className="h-8 px-3 text-xs" title="Copy Description HTML">
+                    <Button variant="secondary" onClick={() => copyToClipboard(col.description, 'HTML Description')} className="h-8 px-3 text-xs" title="Copy Description HTML">
                         <FileCode size={14} className="mr-1.5"/> Desc
                     </Button>
                   </div>
@@ -727,7 +769,7 @@ const CollectionExtractorTool = () => {
 
                 {/* Optional HTML Preview */}
                 {col.description && (
-                    <div className="bg-[#050505] border-t border-neutral-800 px-4 py-2">
+                    <div className="bg-[#050505] border-t border-neutral-800 px-4 py-2" onClick={(e) => e.stopPropagation()}>
                         <details className="text-xs text-neutral-400">
                             <summary className="cursor-pointer hover:text-neutral-300 select-none flex items-center gap-2">
                                 <FileText size={12} /> Show Description HTML Preview
@@ -762,6 +804,7 @@ const App = () => {
   const [activeTab, setActiveTab] = useState("tag-automation");
   const [isSidebarOpen, setSidebarOpen] = useState(true);
   const [libsLoaded, setLibsLoaded] = useState(false);
+  const [notification, setNotification] = useState(null);
 
   // Load external libraries (PapaParse, JSZip) dynamically
   useEffect(() => {
@@ -777,6 +820,10 @@ const App = () => {
     loadLibs();
   }, []);
 
+  const notify = (message, type = 'info') => {
+    setNotification({ message, type });
+  };
+
   const tools = [
     { id: "tag-automation", label: "Tag Automation", icon: <Database size={18} /> },
     { id: "json-creator", label: "JSON Creator", icon: <FileJson size={18} /> },
@@ -787,6 +834,15 @@ const App = () => {
   return (
     <div className="min-h-screen bg-[#050505] text-neutral-300 font-sans flex overflow-hidden selection:bg-neutral-700 selection:text-white">
       
+      {/* Notifications */}
+      {notification && (
+        <Toast 
+          message={notification.message} 
+          type={notification.type} 
+          onClose={() => setNotification(null)} 
+        />
+      )}
+
       {/* Sidebar */}
       <aside className={`${isSidebarOpen ? 'w-64' : 'w-0'} transition-all duration-300 border-r border-neutral-800 bg-[#0a0a0a] flex flex-col shrink-0`}>
         <div className="h-16 flex items-center px-6 border-b border-neutral-800">
@@ -880,10 +936,10 @@ const App = () => {
 
             {/* Tool Content Render */}
             <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-              {activeTab === 'tag-automation' && <TagAutomationTool libsLoaded={libsLoaded} />}
-              {activeTab === 'json-creator' && <JsonCreatorTool />}
-              {activeTab === 'importer' && <ImporterTool />}
-              {activeTab === 'extractor' && <CollectionExtractorTool />}
+              {activeTab === 'tag-automation' && <TagAutomationTool libsLoaded={libsLoaded} notify={notify} />}
+              {activeTab === 'json-creator' && <JsonCreatorTool notify={notify} />}
+              {activeTab === 'importer' && <ImporterTool notify={notify} />}
+              {activeTab === 'extractor' && <CollectionExtractorTool notify={notify} />}
             </div>
 
           </div>
