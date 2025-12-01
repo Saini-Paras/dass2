@@ -21,7 +21,9 @@ import {
   Link,
   Copy,
   ExternalLink,
-  Globe
+  Globe,
+  FileCode,
+  Type
 } from 'lucide-react';
 
 // --- Utility: Script Loader & File Saver ---
@@ -59,7 +61,7 @@ const Card = ({ children, className = "" }) => (
   </div>
 );
 
-const Button = ({ children, onClick, variant = "primary", className = "", disabled = false }) => {
+const Button = ({ children, onClick, variant = "primary", className = "", disabled = false, title = "" }) => {
   const baseStyle = "px-4 py-2 rounded-md font-medium text-sm transition-colors flex items-center justify-center gap-2";
   const variants = {
     primary: "bg-white text-black hover:bg-neutral-200 disabled:opacity-50 disabled:cursor-not-allowed",
@@ -72,6 +74,7 @@ const Button = ({ children, onClick, variant = "primary", className = "", disabl
     <button 
       onClick={onClick} 
       disabled={disabled}
+      title={title}
       className={`${baseStyle} ${variants[variant]} ${className}`}
     >
       {children}
@@ -79,16 +82,23 @@ const Button = ({ children, onClick, variant = "primary", className = "", disabl
   );
 };
 
-const Input = ({ label, value, onChange, placeholder, type = "text" }) => (
-  <div className="flex flex-col gap-1.5">
+const Input = ({ label, value, onChange, placeholder, type = "text", icon: Icon }) => (
+  <div className="flex flex-col gap-1.5 w-full">
     {label && <label className="text-xs font-medium text-neutral-400 uppercase tracking-wider">{label}</label>}
-    <input
-      type={type}
-      value={value}
-      onChange={onChange}
-      placeholder={placeholder}
-      className="bg-[#0a0a0a] border border-neutral-800 text-neutral-200 rounded-md px-3 py-2.5 text-sm focus:outline-none focus:border-neutral-600 transition-colors placeholder:text-neutral-600"
-    />
+    <div className="relative">
+      {Icon && (
+        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500">
+          <Icon size={16} />
+        </div>
+      )}
+      <input
+        type={type}
+        value={value}
+        onChange={onChange}
+        placeholder={placeholder}
+        className={`bg-[#0a0a0a] border border-neutral-800 text-neutral-200 rounded-md py-2.5 text-sm focus:outline-none focus:border-neutral-600 transition-colors placeholder:text-neutral-600 w-full ${Icon ? 'pl-10 pr-3' : 'px-3'}`}
+      />
+    </div>
   </div>
 );
 
@@ -575,19 +585,33 @@ const ImporterTool = () => {
 };
 
 
-// --- Tool 4: Collection Extractor ---
+// --- Tool 4: Collection Extractor (Updated) ---
 
 const CollectionExtractorTool = () => {
   const [url, setUrl] = useState('');
-  const [collections, setCollections] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
+
+  // 1. Initialize from localStorage
+  const [collections, setCollections] = useState(() => {
+    try {
+      const saved = localStorage.getItem('extracted_collections');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+
+  // 2. Save to localStorage whenever collections change
+  useEffect(() => {
+    localStorage.setItem('extracted_collections', JSON.stringify(collections));
+  }, [collections]);
 
   const handleExtract = async () => {
     if (!url) return;
     setLoading(true);
     setError(null);
-    setCollections([]);
 
     try {
       const response = await fetch('/api/extract_collections', {
@@ -617,8 +641,13 @@ const CollectionExtractorTool = () => {
     navigator.clipboard.writeText(text);
   };
 
+  // 3. Search Filter Logic
+  const filteredCollections = collections.filter(col => 
+    col.title.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
+    <div className="max-w-5xl mx-auto space-y-6">
       <Card>
         <h3 className="text-lg font-medium text-white mb-4 flex items-center gap-2">
           <Globe size={18} className="text-neutral-400" />
@@ -646,37 +675,79 @@ const CollectionExtractorTool = () => {
 
       {collections.length > 0 && (
         <Card>
-          <div className="flex items-center justify-between mb-4 border-b border-neutral-800 pb-4">
-             <h3 className="text-lg font-medium text-white">Found {collections.length} Collections</h3>
-             <Button variant="ghost" onClick={() => setCollections([])}>Clear</Button>
+          <div className="flex flex-col md:flex-row md:items-center justify-between mb-6 border-b border-neutral-800 pb-4 gap-4">
+             <div>
+                <h3 className="text-lg font-medium text-white">Extracted Collections ({filteredCollections.length})</h3>
+                <p className="text-xs text-neutral-500 mt-1">Data saved locally</p>
+             </div>
+             
+             <div className="flex gap-3 w-full md:w-auto">
+                <div className="flex-1 md:w-64">
+                    <Input 
+                        placeholder="Search collections..." 
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        icon={Search}
+                    />
+                </div>
+                <Button variant="ghost" onClick={() => {
+                  setCollections([]);
+                  setSearchTerm('');
+                  localStorage.removeItem('extracted_collections');
+                }}>Clear</Button>
+             </div>
           </div>
-          <div className="space-y-2">
-            {collections.map((col, idx) => (
-              <div key={idx} className="flex items-center justify-between p-3 bg-[#0a0a0a] border border-neutral-800 rounded-md hover:border-neutral-700 transition-colors group">
-                <div className="min-w-0 flex-1">
-                  <div className="font-medium text-white truncate">{col.title}</div>
-                  <div className="text-xs text-neutral-500 truncate font-mono mt-0.5">{col.url}</div>
+
+          <div className="space-y-3">
+            {filteredCollections.map((col, idx) => (
+              <div key={idx} className="bg-[#0a0a0a] border border-neutral-800 rounded-md overflow-hidden group hover:border-neutral-700 transition-colors">
+                <div className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div className="min-w-0 flex-1">
+                    <div className="font-medium text-white flex items-center gap-2">
+                        {col.title}
+                        <a href={col.url} target="_blank" rel="noopener noreferrer" className="text-neutral-500 hover:text-white transition-colors">
+                            <ExternalLink size={12} />
+                        </a>
+                    </div>
+                    <div className="text-xs text-neutral-500 truncate font-mono mt-0.5">{col.url}</div>
+                  </div>
+                  
+                  <div className="flex gap-2 shrink-0">
+                    <Button variant="secondary" onClick={() => copyToClipboard(col.title)} className="h-8 px-3 text-xs" title="Copy Title">
+                        <Type size={14} className="mr-1.5"/> Title
+                    </Button>
+                    <Button variant="secondary" onClick={() => copyToClipboard(col.url)} className="h-8 px-3 text-xs" title="Copy URL">
+                        <Link size={14} className="mr-1.5"/> Link
+                    </Button>
+                    <Button variant="secondary" onClick={() => copyToClipboard(col.description)} className="h-8 px-3 text-xs" title="Copy Description HTML">
+                        <FileCode size={14} className="mr-1.5"/> Desc
+                    </Button>
+                  </div>
                 </div>
-                <div className="flex gap-2 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
-                  <button 
-                    onClick={() => copyToClipboard(col.url)}
-                    className="p-2 text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-md transition-colors"
-                    title="Copy Link"
-                  >
-                    <Copy size={16} />
-                  </button>
-                  <a 
-                    href={col.url} 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="p-2 text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-md transition-colors"
-                    title="Open in New Tab"
-                  >
-                    <ExternalLink size={16} />
-                  </a>
-                </div>
+
+                {/* Optional HTML Preview */}
+                {col.description && (
+                    <div className="bg-[#050505] border-t border-neutral-800 px-4 py-2">
+                        <details className="text-xs text-neutral-400">
+                            <summary className="cursor-pointer hover:text-neutral-300 select-none flex items-center gap-2">
+                                <FileText size={12} /> Show Description HTML Preview
+                            </summary>
+                            <div className="mt-2 font-mono text-[10px] leading-relaxed opacity-70 bg-black p-2 rounded border border-neutral-800 overflow-x-auto">
+                                {col.description.substring(0, 300)}
+                                {col.description.length > 300 && '...'}
+                            </div>
+                        </details>
+                    </div>
+                )}
               </div>
             ))}
+            
+            {filteredCollections.length === 0 && (
+                <div className="text-center py-12 text-neutral-600">
+                    <Search size={32} className="mx-auto mb-3 opacity-20" />
+                    <p>No collections match your search.</p>
+                </div>
+            )}
           </div>
         </Card>
       )}

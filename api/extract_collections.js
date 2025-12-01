@@ -18,10 +18,13 @@ export default async function handler(req, res) {
     const data = await response.json();
 
     // Format response
+    // Inside api/extract_collections.js
+
     const collections = data.collections.map((c) => ({
       title: c.title,
       handle: c.handle,
       url: `${url}/collections/${c.handle}`,
+      description: c.body_html || "", 
     }));
 
     res.status(200).json({ collections });
