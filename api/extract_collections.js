@@ -24,7 +24,7 @@ export default async function handler(req, res) {
       title: c.title,
       handle: c.handle,
       url: `${url}/collections/${c.handle}`,
-      description: c.body_html || "", 
+      description: c.description || "", 
     }));
 
     res.status(200).json({ collections });
