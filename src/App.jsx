@@ -24,7 +24,8 @@ import {
   Globe,
   FileCode,
   Type,
-  Hash
+  Hash,
+  Ghost
 } from 'lucide-react';
 
 // --- Utility: Script Loader & File Saver ---
@@ -71,7 +72,7 @@ const Toast = ({ message, type, onClose }) => {
   };
 
   return (
-    <div className={`fixed bottom-6 right-6 z-50 px-4 py-3 rounded-md border shadow-lg backdrop-blur-sm flex items-center gap-3 animate-in slide-in-from-bottom-5 fade-in duration-300 ${bgColors[type] || bgColors.info}`}>
+    <div className={`fixed bottom-6 right-6 z-[60] px-4 py-3 rounded-md border shadow-lg backdrop-blur-sm flex items-center gap-3 animate-in slide-in-from-bottom-5 fade-in duration-300 ${bgColors[type] || bgColors.info}`}>
       {type === 'success' && <CheckCircle size={18} />}
       {type === 'error' && <AlertCircle size={18} />}
       {type === 'info' && <Terminal size={18} />}
@@ -81,7 +82,7 @@ const Toast = ({ message, type, onClose }) => {
 };
 
 const Card = ({ children, className = "" }) => (
-  <div className={`bg-[#141414] border border-neutral-800 rounded-lg p-6 ${className}`}>
+  <div className={`bg-[#141414] border border-neutral-800 rounded-lg p-4 md:p-6 ${className}`}>
     {children}
   </div>
 );
@@ -687,7 +688,7 @@ const CollectionExtractorTool = ({ notify }) => {
           <Globe size={18} className="text-neutral-400" />
           Target Store
         </h3>
-        <div className="flex gap-4">
+        <div className="flex flex-col md:flex-row gap-4">
           <div className="flex-1">
             <Input 
               value={url} 
@@ -749,19 +750,19 @@ const CollectionExtractorTool = ({ notify }) => {
                     <div className="text-xs text-neutral-500 truncate font-mono mt-0.5">{col.url}</div>
                   </div>
                   
-                  <div className="flex gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
-                    <Button variant="secondary" onClick={() => copyToClipboard(col.title, 'Title')} className="h-8 px-3 text-xs" title="Copy Title">
+                  <div className="flex gap-2 shrink-0 overflow-x-auto pb-1 md:pb-0" onClick={(e) => e.stopPropagation()}>
+                    <Button variant="secondary" onClick={() => copyToClipboard(col.title, 'Title')} className="h-8 px-3 text-xs whitespace-nowrap" title="Copy Title">
                         <Type size={14} className="mr-1.5"/> Title
                     </Button>
                     <Button 
                       variant="secondary" 
-                      onClick={() => copyToClipboard(`/collections/${col.handle}`, 'Handle path')} 
-                      className="h-8 px-3 text-xs" 
-                      title="Copy Handle Path"
+                      onClick={() => copyToClipboard(`${col.handle}`, 'Handle path')} 
+                      className="h-8 px-3 text-xs whitespace-nowrap" 
+                      title="Copy Handle Path (e.g., /summer-sale)"
                     >
                         <Hash size={14} className="mr-1.5"/> Handle
                     </Button>
-                    <Button variant="secondary" onClick={() => copyToClipboard(col.description, 'HTML Description')} className="h-8 px-3 text-xs" title="Copy Description HTML">
+                    <Button variant="secondary" onClick={() => copyToClipboard(col.description, 'HTML Description')} className="h-8 px-3 text-xs whitespace-nowrap" title="Copy Description HTML">
                         <FileCode size={14} className="mr-1.5"/> Desc
                     </Button>
                   </div>
@@ -806,7 +807,7 @@ const App = () => {
   const [libsLoaded, setLibsLoaded] = useState(false);
   const [notification, setNotification] = useState(null);
 
-  // Load external libraries (PapaParse, JSZip) dynamically
+  // Load external libraries and set Favicon
   useEffect(() => {
     const loadLibs = async () => {
       try {
@@ -818,6 +819,19 @@ const App = () => {
       }
     };
     loadLibs();
+
+    // Set Dynamic Favicon (Ghost/Holo theme)
+    const link = document.querySelector("link[rel*='icon']") || document.createElement('link');
+    link.type = 'image/svg+xml';
+    link.rel = 'shortcut icon';
+    link.href = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🛸</text></svg>';
+    document.getElementsByTagName('head')[0].appendChild(link);
+    document.title = "Holo's Dashboard";
+
+    // Set sidebar default based on screen size
+    if (window.innerWidth < 768) {
+      setSidebarOpen(false);
+    }
   }, []);
 
   const notify = (message, type = 'info') => {
@@ -843,14 +857,28 @@ const App = () => {
         />
       )}
 
+      {/* Mobile Sidebar Backdrop */}
+      {isSidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 md:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
       {/* Sidebar */}
-      <aside className={`${isSidebarOpen ? 'w-64' : 'w-0'} transition-all duration-300 border-r border-neutral-800 bg-[#0a0a0a] flex flex-col shrink-0`}>
+      <aside className={`
+        fixed md:static inset-y-0 left-0 z-50 h-full
+        bg-[#0a0a0a] border-r border-neutral-800
+        transition-transform duration-300 ease-in-out
+        ${isSidebarOpen ? 'translate-x-0 w-64' : '-translate-x-full w-64 md:translate-x-0 md:w-0 md:border-r-0'}
+        flex flex-col shrink-0
+      `}>
         <div className="h-16 flex items-center px-6 border-b border-neutral-800">
           <div className="flex items-center gap-2 font-semibold text-white tracking-tight">
             <div className="w-6 h-6 bg-white rounded-full flex items-center justify-center">
               <div className="w-3 h-3 bg-black rounded-full" />
             </div>
-            Nexus
+            Holo's Dashboard
           </div>
         </div>
 
@@ -858,37 +886,10 @@ const App = () => {
           <div>
             <div className="text-xs font-medium text-neutral-500 uppercase tracking-wider mb-3 px-2">Apps</div>
             <nav className="space-y-1">
-              <a href="#" className="flex items-center gap-3 px-3 py-2 text-neutral-400 hover:text-white hover:bg-neutral-800/50 rounded-md transition-colors text-sm">
-                <LayoutDashboard size={18} /> Dashboard
-              </a>
               <a href="#" className="flex items-center gap-3 px-3 py-2 text-white bg-neutral-800 rounded-md transition-colors text-sm font-medium">
                 <ShoppingBag size={18} /> Shopify Tools
               </a>
-              <a href="#" className="flex items-center gap-3 px-3 py-2 text-neutral-400 hover:text-white hover:bg-neutral-800/50 rounded-md transition-colors text-sm">
-                <Settings size={18} /> Settings
-              </a>
             </nav>
-          </div>
-
-          <div>
-             <div className="text-xs font-medium text-neutral-500 uppercase tracking-wider mb-3 px-2">Other</div>
-             <nav className="space-y-1">
-               <a href="#" className="flex items-center gap-3 px-3 py-2 text-neutral-400 hover:text-white hover:bg-neutral-800/50 rounded-md transition-colors text-sm">
-                 <Search size={18} /> Search
-               </a>
-             </nav>
-          </div>
-        </div>
-
-        <div className="p-4 border-t border-neutral-800">
-          <div className="flex items-center gap-3 px-2">
-            <div className="w-8 h-8 rounded-full bg-neutral-700 flex items-center justify-center text-xs font-medium text-white">
-              A
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium text-white truncate">Admin</div>
-              <div className="text-xs text-neutral-500 truncate">admin@nexus.com</div>
-            </div>
           </div>
         </div>
       </aside>
@@ -896,7 +897,7 @@ const App = () => {
       {/* Main Content */}
       <main className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
         {/* Header */}
-        <header className="h-16 border-b border-neutral-800 bg-[#0a0a0a]/50 backdrop-blur-md flex items-center justify-between px-6 shrink-0 z-10">
+        <header className="h-16 border-b border-neutral-800 bg-[#0a0a0a]/50 backdrop-blur-md flex items-center justify-between px-4 md:px-6 shrink-0 z-10">
           <div className="flex items-center gap-4">
              <button onClick={() => setSidebarOpen(!isSidebarOpen)} className="text-neutral-400 hover:text-white">
                <Menu size={20} />
@@ -907,12 +908,12 @@ const App = () => {
         </header>
 
         {/* Scrollable Area */}
-        <div className="flex-1 overflow-auto p-6 md:p-8">
+        <div className="flex-1 overflow-auto p-4 md:p-8">
           <div className="max-w-6xl mx-auto">
             
             <div className="mb-8">
-              <h2 className="text-3xl font-bold text-white mb-2">Shopify Automation Suite</h2>
-              <p className="text-neutral-500">Manage your product data, automate tagging, and handle collections.</p>
+              <h2 className="text-2xl md:text-3xl font-bold text-white mb-2">Shopify Automation Suite</h2>
+              <p className="text-sm md:text-base text-neutral-500">Manage your product data, automate tagging, and handle collections.</p>
             </div>
 
             {/* Tab Navigation */}
